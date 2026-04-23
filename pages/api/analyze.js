@@ -117,7 +117,7 @@ analysis_confidence: "high" | "medium" | "low"`;
 
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-4o-mini",
       max_tokens: 2000,
       messages: [
         { role: "system", content: systemPrompt },

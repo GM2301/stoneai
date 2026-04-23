@@ -4,14 +4,22 @@ import { GRADES, STONE_TYPES } from "../lib/stoneKnowledge";
 
 function readFile(file) {
   return new Promise((res, rej) => {
-    const r = new FileReader();
-    r.onload = () => {
-      const d = r.result;
-      const mt = d.split(";")[0].replace("data:", "");
-      res({ data: d.split(",")[1], mediaType: ["image/jpeg","image/png","image/webp"].includes(mt) ? mt : "image/jpeg", preview: d });
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      const MAX = 1200;
+      let w = img.width, h = img.height;
+      if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
+      if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; }
+      canvas.width = w; canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      const data = canvas.toDataURL("image/jpeg", 0.7).split(",")[1];
+      URL.revokeObjectURL(url);
+      res({ data, mediaType: "image/jpeg", preview: "data:image/jpeg;base64," + data });
     };
-    r.onerror = rej;
-    r.readAsDataURL(file);
+    img.onerror = rej;
+    img.src = url;
   });
 }
 

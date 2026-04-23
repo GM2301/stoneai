@@ -9,8 +9,12 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
-  const { imageBase64, mediaType, customCatalog = [] } = req.body;
+  const { imageBase64, customCatalog = [] } = req.body;
+  let { mediaType } = req.body;
   if (!imageBase64) return res.status(400).json({ error: "Nuk ka foto" });
+  // Normalize media type — iPhone dërgon HEIC, OpenAI nuk e pranon
+  const allowed = ["image/jpeg","image/png","image/webp","image/gif"];
+  if (!mediaType || !allowed.includes(mediaType)) mediaType = "image/jpeg";
 
   const { stoneTypesList, finishList, defectList, gradeList, catalogSection } = buildUniversalPrompt(customCatalog);
 

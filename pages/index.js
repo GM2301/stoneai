@@ -1,8 +1,7 @@
 import { useState, useRef, useCallback } from "react";
 import Head from "next/head";
-import { GRADES, DEFECTS, STONE_TYPES } from "../lib/stoneKnowledge";
+import { GRADES, STONE_TYPES } from "../lib/stoneKnowledge";
 
-// ── HELPERS ────────────────────────────────────────────────────────────────────
 function readFile(file) {
   return new Promise((res, rej) => {
     const r = new FileReader();
@@ -16,63 +15,24 @@ function readFile(file) {
   });
 }
 
-const G_COLOR = { A: "#4ade80", B: "#fbbf24", C: "#fb923c", D: "#f87171" };
-const G_BG    = { A: "rgba(74,222,128,.07)", B: "rgba(251,191,36,.07)", C: "rgba(251,146,60,.07)", D: "rgba(248,113,113,.07)" };
-const G_BORDER= { A: "rgba(74,222,128,.18)", B: "rgba(251,191,36,.18)", C: "rgba(251,146,60,.18)", D: "rgba(248,113,113,.18)" };
-const REC = {
-  approve:               { color: "#4ade80", icon: "✓", label: "APROVUAR" },
-  approve_with_discount: { color: "#fbbf24", icon: "◑", label: "APROVUAR ME ZBRITJE" },
-  reject:                { color: "#f87171", icon: "✕", label: "REFUZUAR" },
+const GRADE_STYLE = {
+  A: { accent: "#4ade80", dim: "rgba(74,222,128,0.1)", ring: "rgba(74,222,128,0.25)" },
+  B: { accent: "#fbbf24", dim: "rgba(251,191,36,0.1)",  ring: "rgba(251,191,36,0.25)" },
+  C: { accent: "#fb923c", dim: "rgba(251,146,60,0.1)",  ring: "rgba(251,146,60,0.25)" },
+  D: { accent: "#f87171", dim: "rgba(248,113,113,0.1)", ring: "rgba(248,113,113,0.25)" },
 };
-const SEV_C = { minor: "#5a7590", moderate: "#fbbf24", major: "#fb923c", critical: "#f87171" };
-const SEV_B = { minor: "rgba(90,117,144,.2)", moderate: "rgba(251,191,36,.22)", major: "rgba(251,146,60,.22)", critical: "rgba(248,113,113,.25)" };
-const QUAL_C = { excellent: "#4ade80", good: "#a3d977", fair: "#fbbf24", poor: "#f87171" };
+const REC_STYLE = {
+  approve:               { color: "#4ade80", label: "APROVUAR",           icon: "✓" },
+  approve_with_discount: { color: "#fbbf24", label: "ME ZBRITJE",         icon: "◑" },
+  reject:                { color: "#f87171", label: "REFUZUAR",           icon: "✕" },
+};
+const SEV_STYLE = {
+  minor:    "#64748b",
+  moderate: "#fbbf24",
+  major:    "#fb923c",
+  critical: "#f87171",
+};
 
-function Tag({ children, color = "rgba(80,150,190,.75)", border = "rgba(80,150,190,.2)" }) {
-  return (
-    <span style={{ fontSize: 8, padding: "2px 8px", border: `1px solid ${border}`, borderRadius: 2, color, letterSpacing: ".1em", whiteSpace: "nowrap" }}>
-      {children}
-    </span>
-  );
-}
-
-function Section({ label, children, style = {} }) {
-  return (
-    <div style={{ padding: "15px 16px", border: "1px solid rgba(255,255,255,.055)", borderRadius: 3, background: "rgba(255,255,255,.013)", ...style }}>
-      {label && <div style={{ fontSize: 7, letterSpacing: ".4em", color: "#1a2838", marginBottom: 9, textTransform: "uppercase" }}>{label}</div>}
-      {children}
-    </div>
-  );
-}
-
-function ConfBar({ value, label }) {
-  const color = value >= 80 ? "#4ade80" : value >= 60 ? "#fbbf24" : "#f87171";
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-      <div style={{ flex: 1, height: 2, background: "rgba(255,255,255,.05)", borderRadius: 1, overflow: "hidden" }}>
-        <div style={{ height: "100%", width: `${value}%`, background: color, transition: "width 1.2s cubic-bezier(.4,0,.2,1)", borderRadius: 1 }} />
-      </div>
-      <span style={{ fontSize: 9, color: "#1a2838", minWidth: 64 }}>{value}%{label ? ` ${label}` : ""}</span>
-    </div>
-  );
-}
-
-function QualBadge({ value }) {
-  return (
-    <div style={{ display: "flex", gap: 4 }}>
-      {["excellent","good","fair","poor"].map(q => {
-        const active = value === q;
-        return (
-          <div key={q} style={{ flex: 1, padding: "5px 3px", textAlign: "center", border: `1px solid ${active ? "rgba(80,150,190,.3)" : "rgba(255,255,255,.04)"}`, background: active ? "rgba(80,150,190,.07)" : "transparent", borderRadius: 2, fontSize: 7, letterSpacing: ".06em", textTransform: "uppercase", color: active ? "rgba(80,150,190,.9)" : "#1a2838", transition: "all .2s" }}>
-            {q.slice(0,3)}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ── COMPONENT ──────────────────────────────────────────────────────────────────
 export default function StoneAI() {
   const [preview, setPreview] = useState(null);
   const [fd, setFd]           = useState(null);
@@ -80,18 +40,19 @@ export default function StoneAI() {
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState(null);
   const [drag, setDrag]       = useState(false);
-  const [tab, setTab]         = useState("result"); // result | stone | tips
+  const [phase, setPhase]     = useState("upload"); // upload | analyzing | result
   const inputRef = useRef(null);
 
   const handleFile = useCallback(async (file) => {
     if (!file?.type.startsWith("image/")) return;
     const d = await readFile(file);
-    setFd(d); setPreview(d.preview); setResult(null); setError(null);
+    setFd(d); setPreview(d.preview);
+    setResult(null); setError(null); setPhase("upload");
   }, []);
 
   const analyze = async () => {
     if (!fd) return;
-    setLoading(true); setError(null);
+    setLoading(true); setError(null); setPhase("analyzing");
     try {
       const r = await fetch("/api/analyze", {
         method: "POST",
@@ -100,380 +61,554 @@ export default function StoneAI() {
       });
       const json = await r.json();
       if (!r.ok) throw new Error(json.error || "Gabim");
-      setResult(json); setTab("result");
-    } catch (e) { setError(e.message); }
+      setResult(json); setPhase("result");
+    } catch (e) { setError(e.message); setPhase("upload"); }
     finally { setLoading(false); }
   };
 
-  const reset = () => { setPreview(null); setFd(null); setResult(null); setError(null); };
+  const reset = () => {
+    setPreview(null); setFd(null); setResult(null);
+    setError(null); setPhase("upload");
+  };
 
-  const grade = result?.grade;
-  const rec   = result?.recommendation ? REC[result.recommendation] : null;
-  const stoneInfo = result?.stone_type_id ? STONE_TYPES[result.stone_type_id] : null;
+  const gs = result?.grade ? GRADE_STYLE[result.grade] : null;
+  const rs = result?.recommendation ? REC_STYLE[result.recommendation] : null;
 
   return (
     <>
       <Head>
-        <title>StoneAI — Universal Stone Intelligence</title>
-        <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <title>StoneAI — Stone Intelligence</title>
+        <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Cormorant+Garamond:ital,wght@0,300;0,600;1,300&display=swap" rel="stylesheet" />
+        <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
       </Head>
 
-      <div style={{ minHeight: "100vh", background: "#07090b", display: "flex", flexDirection: "column", fontFamily: "'DM Mono','Courier New',monospace", color: "#b8c8d4" }}>
+      <div id="root">
         <style>{`
-          .drop{transition:border-color .2s,background .2s}
-          .drop:hover{border-color:rgba(80,148,188,.38)!important;background:rgba(80,148,188,.03)!important}
-          .drag{border-color:rgba(80,148,188,.55)!important;background:rgba(80,148,188,.06)!important}
-          .abtn{transition:all .22s}
-          .abtn:hover:not(:disabled){background:rgba(80,148,188,.1)!important;border-color:rgba(80,148,188,.5)!important}
-          .abtn:disabled{opacity:.28;cursor:not-allowed}
-          .spin{animation:spin .7s linear infinite}
-          @keyframes spin{to{transform:rotate(360deg)}}
-          .blink{animation:blink 2s ease-in-out infinite}
-          @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
-          .scanline{position:absolute;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,rgba(80,148,188,.65),transparent);animation:sl 1.8s ease-in-out infinite;pointer-events:none}
-          @keyframes sl{0%{top:0;opacity:0}8%{opacity:1}92%{opacity:1}100%{top:100%;opacity:0}}
-          .fade{animation:fade .45s cubic-bezier(.4,0,.2,1)}
-          @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-          .tab{transition:all .18s;cursor:pointer;border-bottom:2px solid transparent;padding:8px 12px;font-size:8px;letter-spacing:.24em;color:#1a2838}
-          .tab:hover{color:#5a8090}
-          .tab.active{color:rgba(80,148,188,.9);border-bottom-color:rgba(80,148,188,.6)}
-          .app-tag{font-size:8px;padding:3px 8px;border:1px solid rgba(255,255,255,.06);border-radius:2px;color:#253a50;white-space:nowrap}
+          :root {
+            --bg: #080a0c;
+            --bg1: #0d1117;
+            --bg2: #111820;
+            --border: rgba(255,255,255,0.07);
+            --border2: rgba(255,255,255,0.12);
+            --text: #e2e8f0;
+            --text2: #94a3b8;
+            --text3: #475569;
+            --accent: #d4a853;
+            --accent-dim: rgba(212,168,83,0.12);
+            --accent-ring: rgba(212,168,83,0.3);
+            --radius: 12px;
+            --radius-sm: 8px;
+          }
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; }
+          #root { min-height: 100vh; display: flex; flex-direction: column; }
+          button { cursor: pointer; border: none; background: none; font-family: inherit; }
+          input[type=file] { display: none; }
+          ::-webkit-scrollbar { width: 4px; }
+          ::-webkit-scrollbar-thumb { background: var(--bg2); border-radius: 4px; }
+
+          /* ANIMATIONS */
+          @keyframes spin { to { transform: rotate(360deg); } }
+          @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+          @keyframes scanX { 0%{left:-100%} 100%{left:100%} }
+          @keyframes fadeUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+          @keyframes scaleIn { from{opacity:0;transform:scale(0.96)} to{opacity:1;transform:scale(1)} }
+          @keyframes barFill { from{width:0} to{width:var(--w)} }
+
+          .spin { animation: spin 0.8s linear infinite; }
+          .pulse { animation: pulse 2s ease-in-out infinite; }
+          .fadeup { animation: fadeUp 0.5s cubic-bezier(0.4,0,0.2,1) forwards; }
+          .scalein { animation: scaleIn 0.4s cubic-bezier(0.4,0,0.2,1) forwards; }
+
+          /* HEADER */
+          .header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border);
+            position: sticky; top: 0; z-index: 10;
+            background: rgba(8,10,12,0.9);
+            backdrop-filter: blur(12px);
+          }
+          .logo { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 800; letter-spacing: -0.5px; }
+          .logo span { color: var(--accent); }
+          .status { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--text3); letter-spacing: 0.08em; }
+
+          /* MAIN */
+          .main { flex: 1; padding: 24px 20px; max-width: 480px; margin: 0 auto; width: 100%; }
+
+          /* UPLOAD AREA */
+          .upload-area {
+            border: 1.5px dashed var(--border2);
+            border-radius: var(--radius);
+            overflow: hidden;
+            position: relative;
+            transition: border-color 0.2s, background 0.2s;
+            cursor: pointer;
+            background: var(--bg1);
+          }
+          .upload-area:hover, .upload-area.drag {
+            border-color: var(--accent);
+            background: var(--accent-dim);
+          }
+          .upload-empty {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            gap: 16px; padding: 56px 24px; text-align: center;
+          }
+          .upload-icon-wrap {
+            width: 64px; height: 64px; border-radius: 16px;
+            background: var(--bg2); border: 1px solid var(--border2);
+            display: flex; align-items: center; justify-content: center;
+          }
+          .upload-title { font-family: 'Syne', sans-serif; font-size: 16px; font-weight: 600; color: var(--text); }
+          .upload-sub { font-size: 13px; color: var(--text3); line-height: 1.6; }
+          .upload-formats { display: flex; gap: 6px; justify-content: center; margin-top: 4px; }
+          .fmt-tag {
+            font-size: 11px; padding: 3px 8px; border-radius: 6px;
+            border: 1px solid var(--border2); color: var(--text3); letter-spacing: 0.05em;
+          }
+          .upload-img { width: 100%; display: block; max-height: 340px; object-fit: cover; }
+
+          /* SCAN LINE */
+          .scan-line {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            pointer-events: none; overflow: hidden;
+          }
+          .scan-line::after {
+            content: ''; position: absolute; top: 0; bottom: 0; width: 60%;
+            background: linear-gradient(90deg, transparent, rgba(212,168,83,0.15), transparent);
+            animation: scanX 1.6s ease-in-out infinite;
+          }
+
+          /* ACTIONS */
+          .actions { display: flex; gap: 10px; margin-top: 14px; }
+          .btn-analyze {
+            flex: 1; padding: 14px; border-radius: var(--radius-sm);
+            background: var(--accent); color: #080a0c;
+            font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700;
+            letter-spacing: 0.05em; transition: all 0.2s;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+          }
+          .btn-analyze:hover:not(:disabled) { background: #e5ba6a; transform: translateY(-1px); }
+          .btn-analyze:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+          .btn-reset {
+            width: 48px; height: 48px; border-radius: var(--radius-sm);
+            border: 1.5px solid var(--border2); color: var(--text3);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 16px; transition: all 0.2s;
+          }
+          .btn-reset:hover { border-color: var(--border2); color: var(--text); background: var(--bg2); }
+
+          /* ERROR */
+          .error-box {
+            margin-top: 12px; padding: 12px 14px; border-radius: var(--radius-sm);
+            background: rgba(248,113,113,0.08); border: 1px solid rgba(248,113,113,0.2);
+            font-size: 13px; color: #fca5a5; line-height: 1.5;
+          }
+
+          /* RESULTS */
+          .results { display: flex; flex-direction: column; gap: 12px; margin-top: 20px; }
+
+          /* CARD */
+          .card {
+            background: var(--bg1); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 18px;
+            transition: border-color 0.2s;
+          }
+          .card-label {
+            font-size: 10px; font-weight: 600; letter-spacing: 0.12em;
+            color: var(--text3); text-transform: uppercase; margin-bottom: 12px;
+          }
+
+          /* STONE ID CARD */
+          .stone-name {
+            font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 700;
+            color: var(--text); margin-bottom: 4px; line-height: 1.2;
+          }
+          .stone-sub { font-size: 13px; color: var(--text2); margin-bottom: 14px; }
+          .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+          .tag {
+            font-size: 11px; padding: 4px 10px; border-radius: 6px;
+            border: 1px solid var(--border2); color: var(--text2);
+            font-weight: 500; letter-spacing: 0.04em;
+          }
+          .tag.accent { border-color: var(--accent-ring); color: var(--accent); background: var(--accent-dim); }
+
+          /* CONFIDENCE BAR */
+          .conf-wrap { margin-bottom: 8px; }
+          .conf-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+          .conf-label { font-size: 12px; color: var(--text2); }
+          .conf-val { font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; }
+          .conf-track {
+            height: 4px; background: var(--bg2); border-radius: 2px; overflow: hidden;
+          }
+          .conf-fill {
+            height: 100%; border-radius: 2px;
+            transition: width 1.2s cubic-bezier(0.4,0,0.2,1);
+          }
+          .conf-note { font-size: 12px; color: var(--text3); margin-top: 8px; line-height: 1.5; font-style: italic; }
+
+          /* ALTERNATIVES */
+          .alts { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+          .alts-label { font-size: 10px; color: var(--text3); letter-spacing: 0.1em; font-weight: 600; text-transform: uppercase; margin-bottom: 8px; }
+          .alt-item { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+          .alt-name { font-size: 12px; color: var(--text2); flex: 1; }
+          .alt-prob { font-family: 'Syne', sans-serif; font-size: 12px; font-weight: 600; }
+          .alt-reason { font-size: 11px; color: var(--text3); font-style: italic; flex: 2; line-height: 1.4; }
+
+          /* GRADE CARD */
+          .grade-card {
+            display: flex; justify-content: space-between; align-items: center;
+          }
+          .grade-info {}
+          .grade-badge {
+            font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700;
+            letter-spacing: 0.04em; margin-bottom: 4px;
+          }
+          .grade-desc { font-size: 12px; color: var(--text2); line-height: 1.5; max-width: 240px; }
+          .grade-letter {
+            font-family: 'Syne', sans-serif; font-size: 72px; font-weight: 800;
+            opacity: 0.12; line-height: 1;
+          }
+
+          /* REC CARD */
+          .rec-row { display: flex; align-items: center; justify-content: space-between; }
+          .rec-label { font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 700; letter-spacing: 0.04em; }
+          .rec-discount { font-size: 13px; color: #fbbf24; font-weight: 600; }
+          .apps-wrap { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+          .apps-label { font-size: 10px; color: var(--text3); letter-spacing: 0.1em; font-weight: 600; text-transform: uppercase; margin-bottom: 8px; }
+          .app-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+          .app-chip {
+            font-size: 11px; padding: 4px 10px; border-radius: 6px;
+            border: 1px solid var(--border2); color: var(--text2); background: var(--bg2);
+          }
+          .no-app-chip {
+            font-size: 11px; padding: 4px 10px; border-radius: 6px;
+            border: 1px solid rgba(248,113,113,0.2); color: rgba(248,113,113,0.7);
+          }
+
+          /* DEFECTS */
+          .no-defects {
+            display: flex; align-items: center; gap: 8px;
+            font-size: 13px; color: #4ade80; font-weight: 500;
+          }
+          .defect-item {
+            padding: 12px; background: var(--bg2); border-radius: var(--radius-sm);
+            margin-bottom: 8px; border: 1px solid var(--border);
+          }
+          .defect-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+          .defect-name { font-size: 12px; font-weight: 600; color: var(--text); letter-spacing: 0.04em; }
+          .defect-sev {
+            font-size: 10px; padding: 2px 7px; border-radius: 4px;
+            border: 1px solid currentColor; font-weight: 600; letter-spacing: 0.06em;
+            opacity: 0.85;
+          }
+          .defect-meta { font-size: 11px; color: var(--text3); margin-bottom: 4px; }
+          .defect-desc { font-size: 12px; color: var(--text2); line-height: 1.5; }
+          .repair-badge {
+            display: inline-flex; align-items: center; gap: 4px;
+            font-size: 10px; margin-top: 6px; font-weight: 500;
+          }
+
+          /* NATURAL FEATURES */
+          .nat-item { display: flex; gap: 8px; margin-bottom: 6px; }
+          .nat-check { color: #4ade80; font-size: 13px; flex-shrink: 0; margin-top: 1px; }
+          .nat-text { font-size: 12px; color: var(--text2); line-height: 1.5; }
+
+          /* QUALITY GRID */
+          .qual-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+          .qual-item {}
+          .qual-label { font-size: 10px; color: var(--text3); letter-spacing: 0.08em; font-weight: 600; text-transform: uppercase; margin-bottom: 6px; }
+          .qual-dots { display: flex; gap: 4px; }
+          .qual-dot {
+            flex: 1; height: 4px; border-radius: 2px;
+            background: var(--bg2); transition: background 0.3s;
+          }
+          .qual-dot.active { }
+
+          /* NOTES */
+          .notes-text { font-size: 13px; color: var(--text2); line-height: 1.8; }
+
+          /* CARE */
+          .care-text { font-size: 12px; color: var(--text2); line-height: 1.7; }
+
+          /* FOOTER */
+          .footer {
+            padding: 16px 24px; border-top: 1px solid var(--border);
+            display: flex; justify-content: space-between; align-items: center;
+          }
+          .footer-left { font-size: 11px; color: var(--text3); font-family: 'Syne', sans-serif; font-weight: 600; }
+          .footer-right { font-size: 11px; color: var(--text3); }
+
+          /* LOADING STATE */
+          .loading-state {
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: center; gap: 16px; padding: 48px 24px; text-align: center;
+          }
+          .loading-ring {
+            width: 48px; height: 48px; border-radius: 50%;
+            border: 3px solid var(--bg2); border-top-color: var(--accent);
+          }
+          .loading-title { font-family: 'Syne', sans-serif; font-size: 16px; font-weight: 700; color: var(--text); }
+          .loading-sub { font-size: 13px; color: var(--text3); }
+
+          /* RESPONSIVE */
+          @media (min-width: 640px) {
+            .main { padding: 32px 24px; }
+          }
         `}</style>
 
-        {/* ── HEADER ── */}
-        <header style={{ borderBottom: "1px solid rgba(255,255,255,.045)", padding: "14px 28px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div>
-            <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 300, color: "#dde8f2", letterSpacing: ".04em" }}>StoneAI</div>
-            <div style={{ fontSize: 7, letterSpacing: ".4em", color: "#1a2838", marginTop: 1 }}>UNIVERSAL STONE INTELLIGENCE</div>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div className="blink" style={{ width: 5, height: 5, borderRadius: "50%", background: "#4ade80" }} />
-            <span style={{ fontSize: 7, letterSpacing: ".28em", color: "#1a2838" }}>AI AKTIV</span>
+        {/* HEADER */}
+        <header className="header">
+          <div className="logo">Stone<span>AI</span></div>
+          <div className="status">
+            <div className="pulse" style={{ width: 7, height: 7, borderRadius: "50%", background: "#4ade80" }} />
+            AI AKTIV
           </div>
         </header>
 
-        {/* ── BODY ── */}
-        <div style={{ flex: 1, display: "grid", gridTemplateColumns: result ? "340px 1fr" : "420px", justifyContent: "center", gap: 20, padding: "22px 18px", maxWidth: 1060, margin: "0 auto", width: "100%" }}>
+        {/* MAIN */}
+        <main className="main">
 
-          {/* ── LEFT ── */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {/* Upload zone */}
+          <div
+            className={`upload-area${drag ? " drag" : ""}`}
+            onDrop={e => { e.preventDefault(); setDrag(false); handleFile(e.dataTransfer.files[0]); }}
+            onDragOver={e => { e.preventDefault(); setDrag(true); }}
+            onDragLeave={() => setDrag(false)}
+            onClick={() => !preview && inputRef.current?.click()}
+          >
+            {loading && preview && <div className="scan-line" />}
+            {preview
+              ? <img src={preview} alt="" className="upload-img" />
+              : (
+                <div className="upload-empty">
+                  <div className="upload-icon-wrap">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#d4a853" strokeWidth="1.5">
+                      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <div className="upload-title">Ngarko foton e gurit</div>
+                    <div className="upload-sub">Çdo lloj guri natyror ose artificial<br/>Ndriçim i mirë, sfond neutral</div>
+                  </div>
+                  <div className="upload-formats">
+                    {["JPG","PNG","WEBP"].map(f => <span key={f} className="fmt-tag">{f}</span>)}
+                  </div>
+                </div>
+              )}
+          </div>
+          <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={e => handleFile(e.target.files[0])} />
 
-            {/* Upload */}
-            <div
-              className={`drop${drag ? " drag" : ""}`}
-              style={{ border: "1px dashed rgba(255,255,255,.07)", borderRadius: 4, minHeight: preview ? 0 : 220, cursor: preview ? "default" : "pointer", position: "relative", overflow: "hidden" }}
-              onDrop={e => { e.preventDefault(); setDrag(false); handleFile(e.dataTransfer.files[0]); }}
-              onDragOver={e => { e.preventDefault(); setDrag(true); }}
-              onDragLeave={() => setDrag(false)}
-              onClick={() => !preview && inputRef.current?.click()}
-            >
-              {loading && preview && <div className="scanline" />}
-              {preview
-                ? <img src={preview} alt="" style={{ width: "100%", display: "block", maxHeight: 300, objectFit: "cover", borderRadius: 3 }} />
-                : (
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, padding: "40px 20px", textAlign: "center" }}>
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.1)" strokeWidth="1.2"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/></svg>
-                    <div>
-                      <div style={{ fontSize: 10, letterSpacing: ".2em", color: "#2a4a60", marginBottom: 5 }}>NGARKO FOTON E GURIT</div>
-                      <div style={{ fontSize: 8, color: "#1a2838" }}>Kliko ose tërhiq · JPG · PNG · WEBP</div>
-                    </div>
-                    <div style={{ borderTop: "1px solid rgba(255,255,255,.04)", paddingTop: 12, width: "100%" }}>
-                      <div style={{ fontSize: 8, color: "#152030", lineHeight: 2 }}>
-                        🪨 Çdo lloj guri natyror ose artificial<br/>
-                        📸 Ndriçim uniform, sfond neutral<br/>
-                        📐 Foto nga lart, mostra e pastër
+          {/* Actions */}
+          {preview && phase !== "analyzing" && (
+            <div className="actions">
+              <button className="btn-analyze" onClick={analyze} disabled={loading}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+                </svg>
+                ANALIZО GURIN
+              </button>
+              <button className="btn-reset" onClick={reset}>✕</button>
+            </div>
+          )}
+
+          {error && <div className="error-box">⚠ {error}</div>}
+
+          {/* Loading */}
+          {loading && (
+            <div className="loading-state scalein">
+              <div className="loading-ring spin" />
+              <div>
+                <div className="loading-title">Duke analizuar...</div>
+                <div className="loading-sub">GPT-4o Vision po inspekton gurin</div>
+              </div>
+            </div>
+          )}
+
+          {/* RESULTS */}
+          {result && !loading && (
+            <div className="results fadeup">
+
+              {/* Stone ID */}
+              <div className="card">
+                <div className="card-label">Lloji i gurit</div>
+                <div className="stone-name">{result.stone_type_name}</div>
+                <div className="stone-sub">{result.color_description}</div>
+                <div className="tags">
+                  <span className="tag accent">{result.finish_name}</span>
+                  {result.catalog_match_name && <span className="tag accent">{result.catalog_match_name}</span>}
+                  {result.stone_type_id && <span className="tag">{STONE_TYPES[result.stone_type_id]?.hardness_mohs ? `Mohs ${STONE_TYPES[result.stone_type_id].hardness_mohs}` : ""}</span>}
+                </div>
+                {/* Confidence */}
+                <div className="conf-wrap">
+                  <div className="conf-row">
+                    <span className="conf-label">Sigurim identifikimi</span>
+                    <span className="conf-val" style={{ color: result.stone_confidence >= 80 ? "#4ade80" : result.stone_confidence >= 60 ? "#fbbf24" : "#f87171" }}>{result.stone_confidence}%</span>
+                  </div>
+                  <div className="conf-track">
+                    <div className="conf-fill" style={{ width: `${result.stone_confidence}%`, background: result.stone_confidence >= 80 ? "#4ade80" : result.stone_confidence >= 60 ? "#fbbf24" : "#f87171" }} />
+                  </div>
+                  {result.stone_confidence_reason && <div className="conf-note">{result.stone_confidence_reason}</div>}
+                </div>
+                {/* Alternatives */}
+                {result.similar_stones?.length > 0 && (
+                  <div className="alts">
+                    <div className="alts-label">Mundësi alternative</div>
+                    {result.similar_stones.map((s, i) => (
+                      <div key={i} className="alt-item">
+                        <span className="alt-name">{s.stone}</span>
+                        <span className="alt-prob" style={{ color: "var(--accent)" }}>{s.probability}%</span>
+                        <span className="alt-reason">{s.reason}</span>
                       </div>
-                    </div>
+                    ))}
                   </div>
                 )}
-            </div>
-            <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={e => handleFile(e.target.files[0])} />
-
-            {preview && (
-              <div style={{ display: "flex", gap: 8 }}>
-                <button className="abtn" onClick={analyze} disabled={loading}
-                  style={{ flex: 1, padding: "11px", border: "1px solid rgba(80,148,188,.35)", color: "rgba(80,148,188,.88)", fontSize: 9, letterSpacing: ".22em", borderRadius: 2, background: "transparent" }}>
-                  {loading
-                    ? <span style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-                        <span className="spin" style={{width:11,height:11,border:"1.5px solid rgba(80,148,188,.8)",borderTopColor:"transparent",borderRadius:"50%",display:"inline-block"}}/>
-                        DUKE ANALIZUAR...
-                      </span>
-                    : <span style={{display:"flex",alignItems:"center",justifyContent:"center",gap:7}}>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                        ANALIZО GURIN
-                      </span>
-                  }
-                </button>
-                <button onClick={reset} style={{ padding: "11px 13px", border: "1px solid rgba(255,255,255,.06)", color: "#1a2838", borderRadius: 2, fontSize: 12 }}>✕</button>
               </div>
-            )}
 
-            {error && (
-              <div style={{ padding: "10px 12px", background: "rgba(248,113,113,.05)", border: "1px solid rgba(248,113,113,.16)", borderRadius: 2, fontSize: 9, color: "#f87171", lineHeight: 1.7 }}>
-                ⚠ {error}
-              </div>
-            )}
-
-            {/* Stone type reference */}
-            <Section label="Llojet e gurit të njohur">
-              {Object.entries(STONE_TYPES).map(([id, s]) => (
-                <div key={id} style={{ borderBottom: "1px solid rgba(255,255,255,.025)", padding: "4px 0", display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                  <span style={{ fontSize: 9, color: result?.stone_type_id === id ? "rgba(80,148,188,.9)" : "#253a50" }}>{s.name}</span>
-                  <span style={{ fontSize: 7, color: "#1a2838" }}>Mohs {s.hardness_mohs}</span>
+              {/* Grade */}
+              {result.grade && gs && (
+                <div className="card" style={{ borderColor: gs.ring, background: `linear-gradient(135deg, var(--bg1), ${gs.dim})` }}>
+                  <div className="card-label">Gradimi NSI</div>
+                  <div className="grade-card">
+                    <div className="grade-info">
+                      <div className="grade-badge" style={{ color: gs.accent }}>{GRADES[result.grade]?.name}</div>
+                      <div className="grade-desc">{result.grade_reasoning}</div>
+                    </div>
+                    <div className="grade-letter" style={{ color: gs.accent }}>{result.grade}</div>
+                  </div>
                 </div>
-              ))}
-              <div style={{ paddingTop: 8, fontSize: 7, color: "#1a2838" }}>Grade A–D sipas NSI + ASTM C503</div>
-            </Section>
-          </div>
+              )}
 
-          {/* ── RIGHT — RESULTS ── */}
-          {result && (
-            <div className="fade" style={{ display: "flex", flexDirection: "column", gap: 0, overflowY: "auto", maxHeight: "calc(100vh - 120px)" }}>
+              {/* Recommendation */}
+              {rs && (
+                <div className="card">
+                  <div className="card-label">Rekomandimi</div>
+                  <div className="rec-row">
+                    <div className="rec-label" style={{ color: rs.color }}>{rs.icon} {rs.label}</div>
+                    {result.discount_percent > 0 && <div className="rec-discount">-{result.discount_percent}%</div>}
+                  </div>
+                  {result.recommended_applications?.length > 0 && (
+                    <div className="apps-wrap">
+                      <div className="apps-label">Aplikime të rekomanduara</div>
+                      <div className="app-chips">
+                        {result.recommended_applications.map((a, i) => <span key={i} className="app-chip">{a}</span>)}
+                      </div>
+                    </div>
+                  )}
+                  {result.not_recommended_for?.length > 0 && (
+                    <div className="apps-wrap">
+                      <div className="apps-label">Mos përdor për</div>
+                      <div className="app-chips">
+                        {result.not_recommended_for.map((a, i) => <span key={i} className="no-app-chip">{a}</span>)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
-              {/* Tabs */}
-              <div style={{ display: "flex", borderBottom: "1px solid rgba(255,255,255,.04)", marginBottom: 14 }}>
-                {[["result","REZULTATI"],["stone","INFORMACION GURI"],["tips","KËSHILLA"]].map(([id, label]) => (
-                  <button key={id} className={`tab${tab===id?" active":""}`} onClick={() => setTab(id)}>{label}</button>
-                ))}
+              {/* Defects */}
+              <div className="card">
+                <div className="card-label">Defektet — {result.defects?.length ?? 0} të gjetur</div>
+                {!result.defects?.length
+                  ? <div className="no-defects"><span>✓</span> Asnjë defekt i dukshëm</div>
+                  : result.defects.map((d, i) => (
+                    <div key={i} className="defect-item">
+                      <div className="defect-header">
+                        <div className="defect-name">{d.name || d.id}</div>
+                        <div className="defect-sev" style={{ color: SEV_STYLE[d.severity] || SEV_STYLE.minor }}>{(d.severity||"").toUpperCase()}</div>
+                      </div>
+                      {d.location && <div className="defect-meta">📍 {d.location}{d.size ? ` · ${d.size}` : ""}</div>}
+                      <div className="defect-desc">{d.description}</div>
+                      {d.repairable !== undefined && (
+                        <div className="repair-badge" style={{ color: d.repairable ? "#4ade80" : "#f87171" }}>
+                          {d.repairable ? "✓ Reparueshëm" : "✕ Jo reparueshëm"}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                }
               </div>
 
-              {/* ── TAB: RESULT ── */}
-              {tab === "result" && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {/* Natural features */}
+              {result.natural_features?.length > 0 && (
+                <div className="card">
+                  <div className="card-label">Karakteristika natyrore</div>
+                  {result.natural_features.map((f, i) => (
+                    <div key={i} className="nat-item">
+                      <span className="nat-check">✓</span>
+                      <span className="nat-text">{f}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
 
-                  {/* Stone ID */}
-                  <Section>
-                    <div style={{ fontSize: 7, letterSpacing: ".4em", color: "#1a2838", marginBottom: 6 }}>LLOJI I GURIT</div>
-                    <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, color: "#dde8f2", marginBottom: 5 }}>{result.stone_type_name}</div>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
-                      <Tag>{result.finish_name}</Tag>
-                      {result.catalog_match_name && <Tag color="#c8a96e" border="rgba(200,169,110,.25)">{result.catalog_match_name}</Tag>}
-                    </div>
-                    <div style={{ fontSize: 9, color: "#2a4060", marginBottom: 10, lineHeight: 1.65 }}>
-                      <span style={{ color: "#3a5570" }}>Ngjyrë: </span>{result.color_description}<br/>
-                      <span style={{ color: "#3a5570" }}>Pattern: </span>{result.pattern_description}
-                    </div>
-                    <ConfBar value={result.stone_confidence} label="sigurim" />
-                    {result.stone_confidence_reason && (
-                      <div style={{ fontSize: 9, color: "#1a2838", fontStyle: "italic", marginTop: 5, lineHeight: 1.55 }}>{result.stone_confidence_reason}</div>
-                    )}
-                    {result.catalog_match && result.catalog_confidence > 0 && (
-                      <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,.04)" }}>
-                        <div style={{ fontSize: 7, letterSpacing: ".3em", color: "#1a2838", marginBottom: 5 }}>MATCH NGA KATALOGU</div>
-                        <ConfBar value={result.catalog_confidence} label="match katalog" />
+              {/* Quality metrics */}
+              <div className="card">
+                <div className="card-label">Metrikat</div>
+                <div className="qual-grid">
+                  {[
+                    ["Sipërfaqja", result.surface_quality],
+                    ["Struktura", result.structural_integrity],
+                  ].map(([label, val]) => {
+                    const levels = ["poor","fair","good","excellent"];
+                    const idx = levels.indexOf(val);
+                    const colors = ["#f87171","#fb923c","#fbbf24","#4ade80"];
+                    return (
+                      <div key={label} className="qual-item">
+                        <div className="qual-label">{label}</div>
+                        <div className="qual-dots">
+                          {levels.map((l, i) => (
+                            <div key={l} className={`qual-dot${i <= idx ? " active" : ""}`}
+                              style={{ background: i <= idx ? colors[idx] : undefined }} />
+                          ))}
+                        </div>
+                        <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4, textTransform: "capitalize" }}>{val}</div>
                       </div>
-                    )}
-                    {result.similar_stones?.length > 0 && (
-                      <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,.04)" }}>
-                        <div style={{ fontSize: 7, letterSpacing: ".3em", color: "#1a2838", marginBottom: 7 }}>GURI I NGJASHËM</div>
-                        {result.similar_stones.map((s, i) => (
-                          <div key={i} style={{ display: "flex", gap: 8, marginBottom: 4, alignItems: "baseline" }}>
-                            <span style={{ fontSize: 9, color: "#253a50", flex: 1 }}>{s.stone}</span>
-                            <span style={{ fontSize: 8, color: "rgba(80,148,188,.6)" }}>{s.probability}%</span>
-                            <span style={{ fontSize: 8, color: "#1a2838", fontStyle: "italic" }}>{s.reason}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </Section>
+                    );
+                  })}
+                </div>
+              </div>
 
-                  {/* Grade */}
-                  {grade && (
-                    <div style={{ padding: "15px 16px", border: `1px solid ${G_BORDER[grade]}`, borderRadius: 3, background: G_BG[grade], display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <div>
-                        <div style={{ fontSize: 7, letterSpacing: ".4em", color: "#253a50", marginBottom: 4 }}>GRADIMI (NSI Standard)</div>
-                        <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 18, color: G_COLOR[grade], marginBottom: 3 }}>{GRADES[grade]?.name}</div>
-                        <div style={{ fontSize: 9, color: "#253a50", lineHeight: 1.55, maxWidth: 280 }}>{result.grade_reasoning}</div>
-                        {result._grade_info?.structural && (
-                          <div style={{ fontSize: 8, color: "#1a2838", marginTop: 4 }}>Strukturë: {result._grade_info.structural}</div>
-                        )}
-                      </div>
-                      <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 62, fontWeight: 600, color: G_COLOR[grade], opacity: .14, lineHeight: 1 }}>{grade}</div>
-                    </div>
-                  )}
-
-                  {/* Recommendation */}
-                  {rec && (
-                    <Section>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: result.recommended_applications?.length ? 10 : 0 }}>
-                        <span style={{ fontSize: 11, letterSpacing: ".2em", color: rec.color, fontWeight: 500 }}>{rec.icon} {rec.label}</span>
-                        {result.discount_percent > 0 && <span style={{ fontSize: 9, color: "#fbbf24" }}>-{result.discount_percent}% çmim</span>}
-                      </div>
-                      {result.recommended_applications?.length > 0 && (
-                        <>
-                          <div style={{ fontSize: 7, letterSpacing: ".3em", color: "#1a2838", marginBottom: 6 }}>APLIKIME TÖ REKOMANDUARA</div>
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                            {result.recommended_applications.map((a, i) => <span key={i} className="app-tag">{a}</span>)}
-                          </div>
-                        </>
-                      )}
-                      {result.not_recommended_for?.length > 0 && (
-                        <div style={{ marginTop: 8 }}>
-                          <div style={{ fontSize: 7, letterSpacing: ".3em", color: "#1a2838", marginBottom: 5 }}>MOS PËRDOR PËR</div>
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                            {result.not_recommended_for.map((a, i) => <span key={i} style={{ fontSize: 8, padding: "2px 8px", border: "1px solid rgba(248,113,113,.18)", borderRadius: 2, color: "rgba(248,113,113,.6)" }}>{a}</span>)}
-                          </div>
-                        </div>
-                      )}
-                    </Section>
-                  )}
-
-                  {/* Defects */}
-                  <Section label={`Defektet — ${result.defect_count ?? result.defects?.length ?? 0} të gjetur`}>
-                    {!result.defects?.length
-                      ? <div style={{ fontSize: 9, color: "#4ade80" }}>✓ Asnjë defekt strukturor i dukshëm</div>
-                      : result.defects.map((d, i) => (
-                        <div key={i} style={{ padding: "9px 11px", background: "rgba(255,255,255,.015)", border: "1px solid rgba(255,255,255,.04)", borderRadius: 2, marginBottom: 8 }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                            <span style={{ fontSize: 9, color: "rgba(80,148,188,.8)", letterSpacing: ".1em", textTransform: "uppercase" }}>{d.name || d.id}</span>
-                            <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
-                              {d.repairable !== undefined && (
-                                <span style={{ fontSize: 7, color: d.repairable ? "#4ade80" : "#f87171" }}>
-                                  {d.repairable ? "✓ reparueshëm" : "✕ jo reparueshëm"}
-                                </span>
-                              )}
-                              <span style={{ fontSize: 7, padding: "1px 5px", border: `1px solid ${SEV_B[d.severity]||SEV_B.minor}`, borderRadius: 1, color: SEV_C[d.severity]||SEV_C.minor, letterSpacing: ".1em" }}>
-                                {(d.severity||"").toUpperCase()}
-                              </span>
-                            </div>
-                          </div>
-                          {d.location && <div style={{ fontSize: 8, color: "#1a2838", marginBottom: 3 }}>📍 {d.location}</div>}
-                          {d.size && <div style={{ fontSize: 8, color: "#1a2838", marginBottom: 3 }}>📏 {d.size}</div>}
-                          <div style={{ fontSize: 9, color: "#253a50", lineHeight: 1.55 }}>{d.description}</div>
-                        </div>
-                      ))
-                    }
-                  </Section>
-
-                  {/* Natural features */}
-                  {result.natural_features?.length > 0 && (
-                    <Section label="Karakteristika natyrore (jo defekte)">
-                      {result.natural_features.map((f, i) => (
-                        <div key={i} style={{ display: "flex", gap: 7, marginBottom: 5 }}>
-                          <span style={{ color: "#4ade80", fontSize: 9 }}>✓</span>
-                          <span style={{ fontSize: 9, color: "#253a50", lineHeight: 1.5 }}>{f}</span>
-                        </div>
-                      ))}
-                    </Section>
-                  )}
-
-                  {/* Quality */}
-                  <Section label="Metrikat">
-                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                      {[["Kualitet sipërfaqes", result.surface_quality], ["Integriteti strukturor", result.structural_integrity]].map(([lbl, val]) => (
-                        <div key={lbl}>
-                          <div style={{ fontSize: 7, color: "#1a2838", letterSpacing: ".2em", marginBottom: 5 }}>{lbl.toUpperCase()}</div>
-                          <QualBadge value={val} />
-                        </div>
-                      ))}
-                    </div>
-                    <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,.03)", display: "flex", gap: 12 }}>
-                      {[["Foto", result.photo_quality], ["Ndriçim", result.lighting], ["Analizë", result.analysis_confidence]].map(([lbl, val]) => (
-                        <div key={lbl}>
-                          <div style={{ fontSize: 7, color: "#1a2838" }}>{lbl}</div>
-                          <div style={{ fontSize: 8, color: val === "good" || val === "high" || val === "excellent" || val === "adequate" ? "#4ade80" : "#fbbf24" }}>{val}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </Section>
-
-                  {/* Notes */}
+              {/* Notes + Care */}
+              {(result.analysis_notes || result.care_instructions) && (
+                <div className="card">
                   {result.analysis_notes && (
-                    <Section label="Vlerësimi">
-                      <div style={{ fontSize: 9, color: "#2a4a60", lineHeight: 1.8 }}>{result.analysis_notes}</div>
-                    </Section>
+                    <>
+                      <div className="card-label">Vlerësimi</div>
+                      <div className="notes-text" style={{ marginBottom: result.care_instructions ? 14 : 0 }}>{result.analysis_notes}</div>
+                    </>
+                  )}
+                  {result.care_instructions && (
+                    <>
+                      <div className="card-label" style={{ marginTop: result.analysis_notes ? 14 : 0 }}>Kujdesi</div>
+                      <div className="care-text">{result.care_instructions}</div>
+                    </>
                   )}
                 </div>
               )}
 
-              {/* ── TAB: STONE INFO ── */}
-              {tab === "stone" && stoneInfo && (
-                <div className="fade" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  <Section>
-                    <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 18, color: "#dde8f2", marginBottom: 8 }}>{stoneInfo.name}</div>
-                    <div style={{ fontSize: 9, color: "#2a4060", lineHeight: 1.8 }}>
-                      <div><span style={{ color: "#3a5570" }}>Origjina: </span>{stoneInfo.origin}</div>
-                      <div><span style={{ color: "#3a5570" }}>Fortësia Mohs: </span>{stoneInfo.hardness_mohs}</div>
-                      <div><span style={{ color: "#3a5570" }}>Karakteristika: </span>{stoneInfo.characteristics}</div>
-                    </div>
-                  </Section>
-                  <Section label="Kujdesi dhe mbrojtja">
-                    <div style={{ fontSize: 9, color: "#2a4060", lineHeight: 1.8 }}>{stoneInfo.care_notes}</div>
-                    {result.care_instructions && (
-                      <div style={{ marginTop: 8, fontSize: 9, color: "#1a2838", fontStyle: "italic", lineHeight: 1.6 }}>{result.care_instructions}</div>
-                    )}
-                  </Section>
-                  <Section label="Finishet e mundshme">
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                      {stoneInfo.common_finishes.map(f => (
-                        <Tag key={f} color={result.finish_id === f ? "rgba(80,148,188,.9)" : "#253a50"} border={result.finish_id === f ? "rgba(80,148,188,.3)" : "rgba(255,255,255,.06)"}>{f}</Tag>
-                      ))}
-                    </div>
-                  </Section>
-                  <Section label="Aplikimet tipike">
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                      {stoneInfo.use_cases.map(u => <span key={u} className="app-tag">{u}</span>)}
-                    </div>
-                  </Section>
-                  {result._finish_info && (
-                    <Section label={`Finish: ${result.finish_name}`}>
-                      <div style={{ fontSize: 9, color: "#2a4060", lineHeight: 1.8 }}>
-                        <div style={{ marginBottom: 4 }}>Shkëlqimi: {result._finish_info.shine}/10</div>
-                        <div style={{ color: "#4ade80", marginBottom: 2 }}>✓ {result._finish_info.pros}</div>
-                        <div style={{ color: "#fbbf24" }}>⚠ {result._finish_info.cons}</div>
-                      </div>
-                    </Section>
-                  )}
-                </div>
-              )}
-
-              {/* ── TAB: TIPS ── */}
-              {tab === "tips" && (
-                <div className="fade" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  <Section label="Si të bësh foto të mirë">
-                    {[
-                      ["📸 Ndriçim", "Ndriçim i barabartë nga të dyja anët. Shmang hijen e fortë dhe dritën direkte mbi sipërfaqe."],
-                      ["📐 Pozicionimi", "Foto nga lart (90°), drejtpërdrejt. Shmang këndet e pjerrëta."],
-                      ["🪨 Pastërtia", "Pastro sipërfaqen para fotografimit. Pluhuri dhe papastërtia imitojnë defekte."],
-                      ["🔍 Distanca", "Afër sa të kapet e gjithë copla, por jo shumë larg. 30-60cm ideale."],
-                      ["⬛ Sfondi", "Sfond neutral — tryezë druri ose bora e zezë. Kurrë mbi carpet."],
-                      ["☁️ Ndriçim natyror", "Drita e ditës (pa diell direkt) jep rezultatin më të mirë."],
-                    ].map(([title, desc]) => (
-                      <div key={title} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: "1px solid rgba(255,255,255,.03)" }}>
-                        <div style={{ fontSize: 9, color: "#3a5570", marginBottom: 3 }}>{title}</div>
-                        <div style={{ fontSize: 9, color: "#1a2838", lineHeight: 1.6 }}>{desc}</div>
-                      </div>
-                    ))}
-                  </Section>
-                  <Section label="Sistemi i gradimit NSI">
-                    {["A","B","C","D"].map(g => (
-                      <div key={g} style={{ display: "flex", gap: 10, marginBottom: 8, alignItems: "baseline" }}>
-                        <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 16, color: G_COLOR[g], minWidth: 16 }}>{g}</span>
-                        <div>
-                          <div style={{ fontSize: 8, color: "#2a4060" }}>{GRADES[g].name.split("—")[1]?.trim()}</div>
-                          <div style={{ fontSize: 8, color: "#1a2838", lineHeight: 1.5 }}>{GRADES[g].description.split(".")[0]}.</div>
-                        </div>
-                      </div>
-                    ))}
-                  </Section>
-                </div>
-              )}
+              {/* Analyze another */}
+              <button onClick={reset} style={{
+                width: "100%", padding: "14px", borderRadius: "var(--radius-sm)",
+                border: "1.5px solid var(--border2)", color: "var(--text2)",
+                fontFamily: "'Syne', sans-serif", fontSize: 13, fontWeight: 600,
+                letterSpacing: "0.05em", marginTop: 4,
+                transition: "all 0.2s", background: "transparent",
+              }}
+                onMouseOver={e => e.target.style.borderColor = "var(--accent)"}
+                onMouseOut={e => e.target.style.borderColor = "var(--border2)"}
+              >
+                + ANALIZО GUR TJETËR
+              </button>
             </div>
           )}
+        </main>
 
-          {!result && preview && !loading && (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", border: "1px dashed rgba(255,255,255,.04)", borderRadius: 3, color: "#1a2838", fontSize: 9, letterSpacing: ".2em" }}>
-              KLIKO "ANALIZО" PËR REZULTATIN
-            </div>
-          )}
-        </div>
-
-        {/* ── FOOTER ── */}
-        <footer style={{ borderTop: "1px solid rgba(255,255,255,.04)", padding: "10px 28px", display: "flex", justifyContent: "space-between" }}>
-          <span style={{ fontSize: 7, color: "#0d1820", letterSpacing: ".22em" }}>STONEAI v1.0 · UNIVERSAL STONE INTELLIGENCE</span>
-          <span style={{ fontSize: 7, color: "#0d1820", letterSpacing: ".22em" }}>10 LLOJE GURI · NSI GRADE A–D · GPT-4o</span>
+        {/* FOOTER */}
+        <footer className="footer">
+          <div className="footer-left">StoneAI v1.0</div>
+          <div className="footer-right">NSI Grade A–D · GPT-4o</div>
         </footer>
       </div>
     </>
